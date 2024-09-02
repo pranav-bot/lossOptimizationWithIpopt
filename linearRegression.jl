@@ -21,7 +21,7 @@ function linearRegressionWithBatchGradientDescentWeightsZeroInitialized(x, y, ep
     
     for epoch in 1:epochs
         ŷ = b .+ m .* x  # equation of the line
-        loss = MeanSquaredError(y, ŷ)
+        loss = meanSquaredError(y, ŷ)
         push!(loss_history, loss)
         push!(b_history, b)  # Record current b
         push!(m_history, m)  # Record current m
@@ -52,7 +52,7 @@ function linearRegressionWithBatchGradientDescentWeightsZeroInitialized(x, y, ep
     
     # Final predictions and loss
     ŷ = b .+ m .* x  # equation of the line
-    final_loss = MeanSquaredError(y, ŷ)
+    final_loss = meanSquaredError(y, ŷ)
     push!(loss_history, final_loss)
 
     println("Optimized Slope Batch Gradient Descent (m): ", m)
@@ -72,7 +72,7 @@ function linearRegressionWithIpopt(x, y)
     @variable(model, m, start = 0.0) 
 
     # Define the objective function to minimize the sum of squared errors
-    @objective(model, Min, MeanSquaredError(y, [b + m * xi for xi in x]))
+    @objective(model, Min, meanSquaredError(y, [b + m * xi for xi in x]))
 
     # Solve the optimization problem
     optimize!(model)
@@ -83,7 +83,7 @@ function linearRegressionWithIpopt(x, y)
 
     # Calculate the final predictions and loss
     ŷ = b_opt .+ m_opt .* x
-    final_loss = MeanSquaredError(y, ŷ)
+    final_loss = meanSquaredError(y, ŷ)
 
     # Print debugging information
     println("Optimized b Ipopt: ", b_opt)

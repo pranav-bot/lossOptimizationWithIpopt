@@ -1,9 +1,12 @@
 function binaryEncoder(y, category1)
-    for i in 1:eachindex(y)
+    y_temp = Float64[]
+    for i in 1:length(y)
         if y[i] == category1
-            y[i] = 1.0
+            a = 1.0
         else
-            y[i] = 0.0
-        end    
+            a = 0.0
+        end
+        push!(y_temp, a)    
     end
+    return y_temp
 end

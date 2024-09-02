@@ -13,7 +13,7 @@ function plot_loss_surface(x, y, b_history, m_history)
     for (i, b) in enumerate(b_values)
         for (j, m) in enumerate(m_values)
             ŷ = b .+ m .* x
-            losses[i, j] = MeanSquaredError(y, ŷ)
+            losses[i, j] = meanSquaredError(y, ŷ)
         end
     end
 
