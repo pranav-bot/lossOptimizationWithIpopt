@@ -180,6 +180,50 @@ function smo_train!(smo::SMO, epochs::Int=100)
     end
 end
 
+using JuMP
+using Ipopt
+
+function svm_ipopt(X::Matrix{Float64}, y::Vector{Float64}, C::Float64=1.0, tol::Float64=1e-3)
+    n_samples, n_features = size(X)
+    
+    model = Model(Ipopt.Optimizer)
+    
+    @variable(model, w[1:n_features])
+    @variable(model, b)
+    @variable(model, alpha[1:n_samples] >= 0)
+    
+    @objective(model, Min, 0.5 * sum(w[i]^2 for i in 1:n_features) + C * sum(max(0, 1 - y[i] * (dot(w, X[i, :]) + b)) for i in 1:n_samples))
+    
+    for i in 1:n_samples
+        @constraint(model, alpha[i] <= C)
+        @constraint(model, alpha[i] >= 0)
+    end
+    
+    optimize!(model)
+    
+    w_opt = value.(w)
+    b_opt = value(b)
+    
+    return w_opt, b_opt
+end
+
+function fit_multiclass_ipopt(X::Matrix{Float64}, y::Vector{Float64}, n_classes::Int)
+    classifiers = Vector{Tuple{Vector{Float64}, Float64}}(undef, n_classes)
+    
+    for class in 1:n_classes
+        y_binary = map(y_i -> y_i == class ? 1.0 : -1.0, y)
+        w, b = svm_ipopt(X, y_binary)
+        classifiers[class] = (w, b)
+    end
+    
+    return classifiers
+end
+
+function predict_multiclass_ipopt(classifiers::Vector{Tuple{Vector{Float64}, Float64}}, X::Vector{Float64})
+    scores = [dot(classifier[1], X) + classifier[2] for classifier in classifiers]
+    return argmax(scores)
+end
+
 function split_dataset(X::Matrix{Float64}, y::Vector{Float64}, ratio::Float64=0.7)
     n_samples = size(X, 1)
     indices = 1:n_samples
@@ -227,3 +271,15 @@ y_pred_test_smo = [predict_regressor_smo(classifiers_smo[1], X_test[i, :]) for i
 y_pred_test_smo = [argmax([predict_regressor_smo(classifiers_smo[c], X_test[i, :]) for c in 1:n_classes]) for i in 1:size(X_test, 1)]
 test_accuracy_smo = accuracy(y_pred_test_smo, y_test)
 println("Test Accuracy with SMO: ", test_accuracy_smo)
+
+# Train the multiclass SVM model with Ipopt
+classifiers_ipopt = fit_multiclass_ipopt(X_train, y_train, n_classes)
+
+# Prediction with Ipopt
+y_pred_test_ipopt = [predict_multiclass_ipopt(classifiers_ipopt, X_test[i, :]) for i in 1:size(X_test, 1)]
+test_accuracy_ipopt = accuracy(y_pred_test_ipopt, y_test)
+#println("Test Accuracy with Ipopt: ", test_accuracy_ipopt)
+
+println("Test Accuracy with GD: ", test_accuracy_gd)
+println("Test Accuracy with SMO: ", test_accuracy_smo)
+println("Test Accuracy with Ipopt: ", test_accuracy_ipopt)
