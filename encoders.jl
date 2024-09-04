@@ -10,3 +10,10 @@ function binaryEncoder(y, category1)
     end
     return y_temp
 end
+
+function encodemake(x::Array)
+    uniques = unique(x)
+    dict = Dict(item => Float64(idx) for (idx,item) in enumerate(uniques))
+    values_array = [dict[item] for item in x]
+    return values_array
+end
