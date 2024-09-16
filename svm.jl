@@ -264,13 +264,13 @@ end
 # Prediction with GD
 y_pred_test_gd = [predict_multiclass_ovr(classifiers_gd, X_test[i, :]) for i in 1:size(X_test, 1)]
 test_accuracy_gd = accuracy(y_pred_test_gd, y_test)
-println("Test Accuracy with GD: ", test_accuracy_gd)
+#println("Test Accuracy with GD: ", test_accuracy_gd)
 
 # Prediction with SMO
 y_pred_test_smo = [predict_regressor_smo(classifiers_smo[1], X_test[i, :]) for i in 1:size(X_test, 1)]
 y_pred_test_smo = [argmax([predict_regressor_smo(classifiers_smo[c], X_test[i, :]) for c in 1:n_classes]) for i in 1:size(X_test, 1)]
 test_accuracy_smo = accuracy(y_pred_test_smo, y_test)
-println("Test Accuracy with SMO: ", test_accuracy_smo)
+#println("Test Accuracy with SMO: ", test_accuracy_smo)
 
 # Train the multiclass SVM model with Ipopt
 classifiers_ipopt = fit_multiclass_ipopt(X_train, y_train, n_classes)

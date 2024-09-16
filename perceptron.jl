@@ -1,125 +1,177 @@
-using CSV, DataFrames, LinearAlgebra, Random, Plots
+include("activationFunctions.jl")
+include("lossFunctions.jl")
+include("encoders.jl")
+using CSV, DataFrames, LinearAlgebra, Random, Plots, Flux, JuMP, Ipopt
+using CategoricalArrays
 
-# Sigmoid activation function
-function sigmoid(z)
-    return 1.0 ./ (1.0 .+ exp.(-z))
+mutable struct Perceptron
+    lr::Float64
+    weights::Vector{Float64}
+    bias::Float64
+    epochs::Int64
+    w_history::Vector{Vector{Float64}}
+    b_history::Vector{Float64}
+    loss_history::Vector{Float64}
+    best_w::Vector{Float64}
+    best_b::Float64
+    best_loss::Float64
 end
 
-# Cross-Entropy Loss function
-function cross_entropy_loss(y, predictions)
-    n_samples = length(y)
-    return -mean(y .* log.(predictions) .+ (1 .- y) .* log.(1 .- predictions))
+function Perceptron(lr::Float64, n_features::Int64, epochs::Int64)
+    weights = zeros(n_features)
+    bias = 0.0
+    w_history = Vector{Vector{Float64}}()
+    b_history = Vector{Float64}()
+    loss_history = Vector{Float64}()
+    best_w = copy(weights)
+    best_b = bias
+    best_loss = Inf
+
+    return Perceptron(lr, weights, bias, epochs, w_history, b_history, loss_history, best_w, best_b, best_loss)
 end
 
-# Training function for Perceptron with given initialization
-function train_perceptron(X, y, weights_init; epochs=1000, learning_rate=0.01)
-    n_samples, n_features = size(X)
-    
-    # Add bias term to the feature matrix
-    X_bias = hcat(ones(n_samples), X)
-    
-    # Initialize weights (including bias) with the specified method
-    weights = weights_init(n_features + 1)
-    
-    # Store initial weights
-    initial_weights = copy(weights)
-    
-    for epoch in 1:epochs
-        # Forward pass: compute predictions
-        predictions = sigmoid(X_bias * weights)
-        
-        # Compute the gradient
-        gradients = (X_bias' * (predictions - y)) / n_samples
-        
-        # Update weights
-        weights -= learning_rate * gradients
-    end
-    
-    # Extract bias and feature weights
-    bias = weights[1]
-    feature_weights = weights[2:end]
-    
-    # Print initial and final weights and biases
-    println("Initial Weights: ", initial_weights)
-    println("Final Weights: ", weights)
-    println("Bias: ", bias)
-    println("Feature Weights: ", feature_weights)
-    
-    return bias, feature_weights
-end
+function fit_zero_init_weights_SGD(perceptorn::Perceptron, X, y)
+    perceptorn.weights = zeros(size(X)[2])
+    perceptorn.bias = 0
+    total_loss = 0
 
-# Perceptron training function with zero initialization
-function weights_zero_init(n_weights)
-    return zeros(n_weights)
-end
+    for _ in 1:perceptorn.epochs
+        for i in 1:size(X)[1]
+            y_pred = sigmoid(perceptorn.bias + dot(perceptorn.weights, X[i,:]))
+            perceptorn.weights = perceptorn.weights .+ perceptorn.lr *(y[i]-y_pred).*X[i,:]
+            perceptorn.bias = perceptorn.bias .+ perceptorn.lr *(y[i]-y_pred)
+            # Compute the loss after the entire epoch
+            total_loss = Flux.binarycrossentropy(y_pred, y) 
+        end
 
-# Perceptron training function with random initialization
-function weights_random_init(n_weights)
-    return randn(n_weights)
-end
-
-# Function to compute the loss surface
-function compute_loss_surface(X, y, weight_ranges; weights_init)
-    n_samples, n_features = size(X)
-    X_bias = hcat(ones(n_samples), X)
-    
-    loss_surface = zeros(length(weight_ranges[1]), length(weight_ranges[2]))
-    
-    for (i, w1) in enumerate(weight_ranges[1])
-        for (j, w2) in enumerate(weight_ranges[2])
-            weights = weights_init(n_features + 1)
-            weights[2] = w1
-            weights[3] = w2
-            
-            predictions = sigmoid(X_bias * weights)
-            loss_surface[i, j] = cross_entropy_loss(y, predictions)
+        push!(perceptorn.w_history, copy(perceptorn.weights))
+        push!(perceptorn.b_history, perceptorn.bias)
+        push!(perceptorn.loss_history, total_loss)
+        if total_loss < perceptorn.best_loss
+            perceptorn.best_loss = total_loss
+            perceptorn.best_w .= perceptorn.weights
+            perceptorn.best_b = perceptorn.bias
         end
     end
-    
-    return loss_surface
+    return perceptorn
 end
 
-# Main function to run the experiments
-function main()
-    # Load and prepare the Iris dataset
-    df = CSV.read("data/Iris.csv", DataFrame)
-    
-    # Convert categorical feature to integer values
-    X = Matrix(df[!, Not(:Species)])  # Features
-    y_raw = df.Species
+function fit_random_init_weights_SGD(perceptorn::Perceptron, X, y)
+    perceptorn.weights = rand(Float64, size(X)[2]) 
+    perceptorn.bias = 0
+    total_loss = 0
 
-    # Create a dictionary for encoding
-    label_dict = Dict("Iris-setosa" => 1, "Iris-versicolor" => 2, "Iris-virginica" => 3)
-    y_encoded = [label_dict[label] for label in y_raw]
-
-    # One-hot encode the target variable
-    n_classes = 3
-    y_one_hot = hcat([y_encoded .== i for i in 1:n_classes]...)
-
-    # Weight ranges for the plot
-    weight_ranges = (collect(-5:0.5:5), collect(-5:0.5:5))
-
-    # Train Perceptron with zero initialization and compute loss surface
-    println("Training Perceptron with Zero Initialization:")
-    bias_zero, feature_weights_zero = train_perceptron(X, y_one_hot[:, 1], weights_zero_init; epochs=1000, learning_rate=0.01)
-    
-    println("\nComputing loss surface for Zero Initialization:")
-    loss_surface_zero = compute_loss_surface(X, y_one_hot[:, 1], weight_ranges; weights_init=weights_zero_init)
-    
-    # Train Perceptron with random initialization and compute loss surface
-    println("\nTraining Perceptron with Random Initialization:")
-    bias_random, feature_weights_random = train_perceptron(X, y_one_hot[:, 1], weights_random_init; epochs=1000, learning_rate=0.01)
-    
-    println("\nComputing loss surface for Random Initialization:")
-    loss_surface_random = compute_loss_surface(X, y_one_hot[:, 1], weight_ranges; weights_init=weights_random_init)
-
-    # Plot the loss surfaces
-    p1 = contour(weight_ranges[1], weight_ranges[2], loss_surface_zero, title="Loss Surface (Zero Initialization)", xlabel="Weight 1", ylabel="Weight 2")
-    p2 = contour(weight_ranges[1], weight_ranges[2], loss_surface_random, title="Loss Surface (Random Initialization)", xlabel="Weight 1", ylabel="Weight 2")
-
-    # Display plots
-    plot(p1, p2, layout=(1, 2))
+    for _ in 1:perceptorn.epochs
+        for i in 1:size(X)[1]
+            #println("I", i)
+            y_pred = sigmoid(perceptorn.bias + dot(perceptorn.weights, X[i,:]))
+            perceptorn.weights = perceptorn.weights .+ perceptorn.lr *(y[i]-y_pred).*X[i,:]
+            perceptorn.bias = perceptorn.bias .+ perceptorn.lr *(y[i]-y_pred) 
+        end
+        # Compute the loss after the entire epoch
+        total_loss = Flux.binarycrossentropy(y_pred, y)
+        push!(perceptorn.w_history, copy(perceptorn.weights))
+        push!(perceptorn.b_history, perceptorn.bias)
+        push!(perceptorn.loss_history, total_loss)
+        if total_loss < perceptorn.best_loss
+            perceptorn.best_loss = total_loss
+            perceptorn.best_w .= perceptorn.weights
+            perceptorn.best_b = perceptorn.bias
+        end
+    end
+    return perceptorn
 end
 
-# Run the main function
-main()
+function optimize_perceptron_jump(X::Matrix{Float64}, y::Vector{Int64}, epochs::Int64=1000, λ::Float64=0.01)
+    n_features = size(X, 2)
+    n_samples = size(X, 1)
+
+    # Feature scaling (standardization)
+    #X = (X .- mean(X, dims=1)) ./ std(X, dims=1)
+
+    # Create a JuMP model
+    model = Model(Ipopt.Optimizer)
+    set_silent(model)
+
+    # Define variables
+    @variable(model, w[1:n_features])  # weights
+    @variable(model, b)                # bias
+
+    # Define auxiliary variables for the sigmoid function
+    @variable(model, z[1:n_samples])
+    @variable(model, p[1:n_samples])
+
+    # Constraints for z (linear combination)
+    @constraint(model, [i=1:n_samples], z[i] == sum(X[i,j] * w[j] for j in 1:n_features) + b)
+
+    # Exact sigmoid function
+    @NLconstraint(model, [i=1:n_samples], p[i] == 1 / (1 + exp(-z[i])))
+
+    # Objective: Minimize binary cross-entropy loss with L2 regularization
+    @NLobjective(model, Min, 
+        sum(-y[i] * log(p[i] + 1e-10) - (1 - y[i]) * log(1 - p[i] + 1e-10) for i in 1:n_samples) / n_samples
+        + λ * sum(w[j]^2 for j in 1:n_features)  # L2 regularization term
+    )
+
+    # Set the maximum number of iterations
+    set_optimizer_attribute(model, "max_iter", epochs)
+
+    # Solve the optimization problem
+    optimize!(model)
+
+    # Extract results
+    optimal_weights = value.(w)
+    optimal_bias = value(b)
+    optimal_loss = objective_value(model)
+    status = termination_status(model)
+
+    return optimal_weights, optimal_bias, optimal_loss, status
+end
+
+
+function predict(perceptron::Perceptron, X)
+    y_pred = zeros(size(X, 1))
+    for i in 1:size(X, 1)
+        prob = sigmoid(perceptron.bias + dot(perceptron.weights, X[i, :]))
+        y_pred[i] = prob >= 0.5 ? 1 : 0  # Threshold at 0.5 for binary classification
+    end
+    return y_pred
+end
+
+function accuracy(y_true, y_pred)
+    return sum(y_true .== y_pred) / length(y_true)
+end
+
+df = CSV.read("data/Titanic-Dataset.csv", DataFrame)
+df = select!(df, Not(:PassengerId, :Name, :Ticket, :Cabin))
+df.Sex = encodemake(df.Sex)
+df.Embarked = encodemake(df.Embarked)
+df = dropmissing!(df)
+X = Matrix(df)
+y = df.Survived
+
+
+perceptron = Perceptron(0.01, size(X)[2], 1000)
+
+trained_perceptron  = fit_zero_init_weights_SGD(perceptron, X, y)
+
+y_pred = predict(trained_perceptron, X)
+
+#Calculate accuracy
+acc = accuracy(y, y_pred)
+println("Model accuracy: ", acc)
+
+
+optimal_weights, optimal_bias, optimal_loss, status = optimize_perceptron_jump(X, y, 1000)
+
+# Create a new Perceptron with the optimal parameters
+optimized_perceptron = Perceptron(0.01, size(X, 2), 1)
+optimized_perceptron.weights = optimal_weights
+optimized_perceptron.bias = optimal_bias
+
+# Make predictions and calculate accuracy
+y_pred = predict(optimized_perceptron, X)
+acc = accuracy(y, y_pred)
+println("Optimized model accuracy: ", acc)
+
+
