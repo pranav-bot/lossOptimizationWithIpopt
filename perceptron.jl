@@ -173,5 +173,3 @@ optimized_perceptron.bias = optimal_bias
 y_pred = predict(optimized_perceptron, X)
 acc = accuracy(y, y_pred)
 println("Optimized model accuracy: ", acc)
-
-
